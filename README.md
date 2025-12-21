@@ -13,7 +13,7 @@
 
 **An AI-powered platform that simplifies group travel planning — from idea to itinerary.**
 
-[🌐 Live Demo](#) • [📄 Project Report](ReportINT222.pdf) • [🎥 Video Demo](#) • [📘 Docs](#documentation)
+
 
 </div>
 
