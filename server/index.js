@@ -1,0 +1,228 @@
+import express from "express";
+import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import User from "./models/User.js";
+import cors from "cors";
+import dotenv from "dotenv";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Routes - assumed imports based on usage
+import trips from "./routes/trips.js";
+import bookingRoutes from "./routes/bookings.js";
+import authRoutes from "./routes/auth.js";
+import userRoutes from "./routes/users.js";
+import notificationRoutes from "./routes/notifications.js";
+import messageRoutes from "./routes/messages.js";
+import organiserRoutes from "./routes/organiser.js";
+import Message from "./models/Message.js";
+import Booking from "./models/Booking.js";
+import Trip from "./models/Trip.js";
+import Notification from "./models/Notification.js";
+
+dotenv.config();
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
+
+// Make io accessible to our router
+app.set('io', io);
+
+// Middleware
+app.use(express.json());
+app.use(cors());
+
+// Routes
+app.use("/api/trips", trips);
+app.use("/api/bookings", bookingRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/organiser", organiserRoutes);
+
+const PORT = process.env.PORT || 5000;
+
+// Socket.io Logic
+io.use(async (socket, next) => {
+    try {
+        const token = socket.handshake.auth.token;
+        if (!token) {
+            return next(new Error("Authentication error"));
+        }
+
+        const verified = jwt.verify(token, process.env.JWT_SECRET);
+
+        // Fetch user to get latest status and username
+        const user = await User.findById(verified.id);
+        if (!user || (!user.isVerified && user.role !== 'admin')) {
+            return next(new Error("User not verified"));
+        }
+
+        socket.user = user;
+        next();
+    } catch (err) {
+        next(new Error("Authentication error"));
+    }
+});
+
+io.on("connection", (socket) => {
+    const userId = socket.user.id;
+    socket.join(`user_${userId}`);
+    console.log(`User Connected: ${socket.id}, UserID: ${userId}`);
+
+    socket.on("join_chat", async (data) => {
+        const { tripId } = data;
+
+        if (!tripId || tripId.length < 24 || !/^[0-9a-fA-F]{24}$/.test(tripId)) {
+            console.warn(`[SOCKET] Invalid tripId format: ${tripId}`);
+            socket.emit("error", { message: "Invalid trip ID format" });
+            return;
+        }
+
+        try {
+            // Check if user is creator of the trip OR has an approved booking
+            const trip = await Trip.findById(tripId);
+            const isCreator = trip && trip.userId.toString() === socket.user.id;
+
+            const isApprovedMember = await Booking.findOne({
+                tripId,
+                userId: socket.user.id,
+                status: "approved"
+            });
+
+            if (!isApprovedMember && !isCreator && socket.user.role !== 'admin') {
+                console.log(`User ${socket.user.username} (ID: ${socket.user.id}) ATTEMPTED to join room: trip_${tripId} WITHOUT APPROVAL/OWNERSHIP`);
+                socket.emit("error", { message: "You are not an approved member of this trip." });
+                return;
+            }
+
+            const roomName = `trip_${tripId}`;
+            socket.join(roomName);
+            console.log(`User connected: ${socket.user.username} (ID: ${socket.user.id}, Role: ${socket.user.role})`);
+
+            // Join personal room for private notifications
+            socket.join(`user_${socket.user.id}`);
+
+            // Confirm join to client
+            socket.emit("joined_room", { room: roomName });
+        } catch (err) {
+            console.error("Error joining chat room:", err);
+            socket.emit("error", { message: "Internal server error while joining chat" });
+        }
+    });
+
+    socket.on("send_message", async (data) => {
+        console.log(`DEBUG: Received send_message from ${socket.user?.username}:`, data);
+        const { tripId, message, type, imageUrl } = data;
+
+        if (!tripId || tripId.length < 24 || !/^[0-9a-fA-F]{24}$/.test(tripId)) {
+            console.error(`DEBUG: Missing or invalid tripId in send_message: ${tripId}`);
+            socket.emit("error", { message: "Invalid trip ID format" });
+            return;
+        }
+
+        try {
+            // Re-verify membership/ownership
+            const trip = await Trip.findById(tripId);
+            const isCreator = trip && trip.userId.toString() === socket.user.id;
+
+            const isApprovedMember = await Booking.findOne({
+                tripId,
+                userId: socket.user.id,
+                status: "approved"
+            });
+
+            if (!isApprovedMember && !isCreator && socket.user.role !== 'admin') {
+                console.error(`User ${socket.user.username} attempted to send message to trip_${tripId} WITHOUT APPROVAL`);
+                socket.emit("error", { message: "You are not an approved member of this trip." });
+                return;
+            }
+
+            const roomName = `trip_${tripId}`;
+
+            const newMessage = new Message({
+                tripId,
+                userId: socket.user.id,
+                username: socket.user.username,
+                message: message || (type === 'image' ? 'Sent a photo' : ''),
+                type: type || "text",
+                imageUrl: imageUrl || ""
+            });
+            const savedMessage = await newMessage.save();
+            console.log("DEBUG: Message saved to DB:", savedMessage._id);
+
+            const messageToSend = {
+                _id: savedMessage._id,
+                tripId,
+                author: socket.user.username,
+                senderId: socket.user.id,
+                message: savedMessage.message,
+                type: savedMessage.type,
+                imageUrl: savedMessage.imageUrl,
+                createdAt: savedMessage.createdAt,
+                time: new Date().getHours() + ":" + new Date().getMinutes().toString().padStart(2, '0'),
+            };
+
+            console.log(`DEBUG: Broadcasting message to ${roomName}`);
+            io.to(roomName).emit("receive_message", messageToSend);
+
+            // NOTIFICATIONS
+            const members = await Booking.find({ tripId, status: "approved", userId: { $ne: socket.user.id } });
+
+            for (const member of members) {
+                const notif = new Notification({
+                    userId: member.userId,
+                    type: "chat_message",
+                    message: `New ${type === 'image' ? 'photo' : 'message'} from ${socket.user.username}`,
+                    link: `/chat?tripId=${tripId}`,
+                    relatedId: savedMessage._id
+                });
+                await notif.save();
+                io.to(`user_${member.userId}`).emit("notification_new", notif);
+            }
+
+        } catch (err) {
+            console.error("DEBUG: Error in send_message:", err);
+            socket.emit("error", { message: "Failed to send message" });
+        }
+    });
+
+    socket.on("disconnect", () => {
+        console.log("User Disconnected", socket.id);
+    });
+});
+
+// Database Connection
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => {
+        console.log("✅ MongoDB Connected");
+        console.log("DB Name:", mongoose.connection.name);
+        console.log("Ready State:", mongoose.connection.readyState);
+    })
+    .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+
+// Serve Static files in Production
+const buildPath = path.join(__dirname, "../dist");
+app.use(express.static(buildPath));
+
+// Standard SPA Catch-All
+app.get("*", (req, res) => {
+    res.sendFile(path.join(buildPath, "index.html"));
+});
+
+// Start Server
+httpServer.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
