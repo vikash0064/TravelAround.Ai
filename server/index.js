@@ -28,7 +28,9 @@ import Notification from "./models/Notification.js";
 
 
 if (!process.env.JWT_SECRET) {
-    console.error("⚠️  WARNING: JWT_SECRET is not defined. Authentication will not work correctly.");
+    console.warn("⚠️  WARNING: JWT_SECRET is not defined in environment variables.");
+    console.warn("⚠️  USING FALLBACK UNSAFE SECRET. PLEASE SET 'JWT_SECRET' IN RENDER DASHBOARD.");
+    process.env.JWT_SECRET = "temporary_dev_secret_key_12345_!@#"; // Fallback to prevent crash
 }
 
 const app = express();
