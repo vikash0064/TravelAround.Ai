@@ -104,6 +104,7 @@ router.post("/login", async (req, res) => {
         // }
 
         // Create token
+        console.log(`[AUTH_LOGIN] DEBUG: JWT_SECRET type: ${typeof process.env.JWT_SECRET}, length: ${process.env.JWT_SECRET?.length}`);
         if (!process.env.JWT_SECRET) {
             console.error("[AUTH_LOGIN_ERROR] JWT_SECRET is missing from environment variables.");
             return res.status(500).json({ message: "Server misconfiguration: Missing JWT_SECRET" });

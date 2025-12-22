@@ -12,6 +12,9 @@ export default defineConfig({
   optimizeDeps: {
     include: ["@google/generative-ai"],
   },
+  build: {
+    chunkSizeWarningLimit: 1600,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
