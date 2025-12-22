@@ -141,16 +141,30 @@ async function fetchTouristPlaces(lat, lng, locationName) {
 
     const placePromises = data.elements.slice(0, 25).map(async (element) => {
       const placeName = element.tags.name || `${locationName} Point of Interest`;
-      const wikiKey = element.tags.wikidata || element.tags.wikipedia;
+      // Prioritize wikipedia tag which usually has "lang:Title" format
+      const wikiTag = element.tags.wikipedia;
 
       // Fetch description from Wikipedia if available
       let details = element.tags.description || element.tags['description:en'] || 'A notable local attraction.';
-      if (wikiKey) {
+
+      if (wikiTag) {
         try {
-          const wikiResponse = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiKey.split(':')[1] || wikiKey)}`);
-          const wikiData = await wikiResponse.json();
-          details = wikiData.extract || details;
-        } catch (e) { /* Keep default details */ }
+          // Extract title (e.g. "en:Eiffel Tower" -> "Eiffel Tower")
+          // If it's just a title without prefix, use it as is.
+          const title = wikiTag.includes(':') ? wikiTag.split(':')[1] : wikiTag;
+
+          if (title) {
+            const wikiResponse = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+            if (wikiResponse.ok) {
+              const wikiData = await wikiResponse.json();
+              if (wikiData.extract) {
+                details = wikiData.extract;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Wikipedia fetch failed for", placeName, e);
+        }
       }
 
       // Smart pricing based on type
@@ -175,7 +189,7 @@ async function fetchTouristPlaces(lat, lng, locationName) {
 
       return {
         placeName,
-        details: details.substring(0, 150) + '...', // Truncate long descriptions
+        details: details.substring(0, 150) + (details.length > 150 ? '...' : ''), // Truncate long descriptions
         imageUrl,
         geoCoordinates: { lat: element.lat, lng: element.lon },
         ticketPricing,
@@ -277,7 +291,8 @@ async function createSmartItinerary(places, days, location, traveler, budget) {
   `;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    // UPDATED MODEL NAME
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const aiItinerary = JSON.parse(result.response.text());
 

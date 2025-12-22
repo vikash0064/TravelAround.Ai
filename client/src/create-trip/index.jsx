@@ -36,8 +36,17 @@ function CreateTrip() {
   // ... (keep rest of existing code until GenerateTrip)
 
   const GenerateTrip = async () => {
-    // User check removed
-
+    // Check if user is logged in
+    if (!user) {
+      toast.error("Please log in to generate a trip!", {
+        action: {
+          label: "Login",
+          onClick: () => navigate('/login')
+        }
+      });
+      navigate('/login');
+      return;
+    }
 
     console.log("=".repeat(50));
     console.log("DEBUG GenerateTrip: Starting process");
