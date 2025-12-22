@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import User from "./models/User.js";
 import cors from "cors";
-import dotenv from "dotenv";
+import "dotenv/config";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
@@ -25,7 +25,11 @@ import Booking from "./models/Booking.js";
 import Trip from "./models/Trip.js";
 import Notification from "./models/Notification.js";
 
-dotenv.config();
+
+
+if (!process.env.JWT_SECRET) {
+    console.error("⚠️  WARNING: JWT_SECRET is not defined. Authentication will not work correctly.");
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -58,6 +62,10 @@ const PORT = process.env.PORT || 5000;
 io.use(async (socket, next) => {
     try {
         const token = socket.handshake.auth.token;
+        if (!process.env.JWT_SECRET) {
+            console.error("DEBUG: JWT_SECRET is missing in Socket Middleware.");
+            return next(new Error("Server Configuration Error"));
+        }
         if (!token) {
             return next(new Error("Authentication error"));
         }

@@ -13,6 +13,10 @@ export const verifyToken = (req, res, next) => {
             tokenStr = token.slice(7, token.length).trimLeft();
         }
 
+        if (!process.env.JWT_SECRET) {
+            console.error("DEBUG: JWT_SECRET is missing.");
+            return res.status(500).json({ message: "Server Error: Configuration missing" });
+        }
         const verified = jwt.verify(tokenStr, process.env.JWT_SECRET);
         req.user = verified;
         next();
