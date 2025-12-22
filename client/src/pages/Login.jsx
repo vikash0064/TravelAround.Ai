@@ -33,14 +33,14 @@ const Login = () => {
                     throw new Error("Access Denied: You are not an administrator.");
                 }
                 dispatch({ type: "LOGIN_SUCCESS", payload: res.data.user });
-                localStorage.setItem("token", res.data.token);
+                // localStorage.setItem("token", res.data.token); // Removed token
                 navigate('/admin');
             } else if (loginType === 'organiser') {
                 if (userRole !== 'organiser' && userRole !== 'admin') {
                     throw new Error("Access Denied: You are not an organiser.");
                 }
                 dispatch({ type: "LOGIN_SUCCESS", payload: res.data.user });
-                localStorage.setItem("token", res.data.token);
+                // localStorage.setItem("token", res.data.token); // Removed token
                 navigate('/organiser');
             } else {
                 // User Login Mode & Strict Check
@@ -48,7 +48,7 @@ const Login = () => {
                     throw new Error("Please use Admin Login for administrator accounts.");
                 }
                 dispatch({ type: "LOGIN_SUCCESS", payload: res.data.user });
-                localStorage.setItem("token", res.data.token);
+                // localStorage.setItem("token", res.data.token); // Removed token
                 navigate('/');
             }
 

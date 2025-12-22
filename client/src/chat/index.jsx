@@ -70,13 +70,11 @@ function Chat() {
             }
         });
 
-        // Initialize socket with token
+        // Initialize socket with session (cookie)
         const socketUrl = import.meta.env.PROD ? window.location.origin : "http://localhost:5000";
         console.log("DEBUG: Connecting to socket at:", socketUrl, "with tripId:", tripId);
         const newSocket = io(socketUrl, {
-            auth: {
-                token: localStorage.getItem("token")
-            }
+            withCredentials: true
         });
 
         newSocket.on("connect", () => {

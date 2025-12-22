@@ -34,7 +34,7 @@ function Header() {
             // Connect Socket
             const socketUrl = import.meta.env.PROD ? window.location.origin : "http://localhost:5000";
             const newSocket = io(socketUrl, {
-                auth: { token: localStorage.getItem("token") } // Ensure token is passed
+                withCredentials: true
             });
             setSocket(newSocket);
 

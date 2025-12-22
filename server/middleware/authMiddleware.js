@@ -1,37 +1,23 @@
-import jwt from "jsonwebtoken";
+// import jwt from "jsonwebtoken"; // Removed JWT
+// import model for detailed checks if necessary, but session is trusted store.
 
 export const verifyToken = (req, res, next) => {
-    const token = req.header("Authorization");
-    if (!token) {
-        console.log("DEBUG: Access Denied. No token provided.");
-        return res.status(401).json({ message: "Access Denied" });
-    }
+    // Session middleware runs before this.
+    // We expect req.session.user to be populated if logged in.
 
-    try {
-        let tokenStr = token;
-        if (token.startsWith("Bearer ")) {
-            tokenStr = token.slice(7, token.length).trimLeft();
-        }
-
-        if (!process.env.JWT_SECRET) {
-            console.error("DEBUG: JWT_SECRET is missing.");
-            return res.status(500).json({ message: "Server Error: Configuration missing" });
-        }
-        const verified = jwt.verify(tokenStr, process.env.JWT_SECRET);
-        req.user = verified;
+    if (req.session && req.session.user) {
+        // Map session user to req.user for compatibility with existing controllers
+        req.user = req.session.user;
         next();
-    } catch (err) {
-        console.error("DEBUG: Token verification failed:", err.message);
-        if (err.name === 'TokenExpiredError') {
-            return res.status(401).json({ message: "Token Expired" });
-        }
-        res.status(400).json({ message: "Invalid Token" });
+    } else {
+        console.log("DEBUG: Access Denied. No session or user not authenticated.");
+        return res.status(401).json({ message: "Access Denied. Please log in." });
     }
 };
 
 export const verifyAdmin = (req, res, next) => {
     verifyToken(req, res, () => {
-        if (req.user.role === "admin") {
+        if (req.user && req.user.role === "admin") {
             next();
         } else {
             res.status(403).json({ message: "Access Denied: Admin only" });
@@ -41,7 +27,7 @@ export const verifyAdmin = (req, res, next) => {
 
 export const verifyOrganiser = (req, res, next) => {
     verifyToken(req, res, () => {
-        if (req.user.role === "organiser" || req.user.role === "admin") {
+        if (req.user && (req.user.role === "organiser" || req.user.role === "admin")) {
             next();
         } else {
             res.status(403).json({ message: "Access Denied: Organiser only" });

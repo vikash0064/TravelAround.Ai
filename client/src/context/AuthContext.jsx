@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useReducer } from "react";
+import api from "../service/api";
 
 const INITIAL_STATE = {
-    user: JSON.parse(localStorage.getItem("user")) || null,
-    loading: false,
+    user: null, // Don't trust localStorage, wait for session check
+    loading: true,
     error: null,
 };
 
@@ -51,27 +52,27 @@ const AuthReducer = (state, action) => {
 export const AuthContextProvider = ({ children }) => {
     const [state, dispatch] = useReducer(AuthReducer, INITIAL_STATE);
 
-    useEffect(() => {
-        if (state.user) {
-            localStorage.setItem("user", JSON.stringify(state.user));
-        } else {
-            localStorage.removeItem("user");
-        }
-    }, [state.user]);
-
-    const refreshUser = async () => {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-
+    // Build checkAuth function
+    const checkAuth = async () => {
         try {
-            const res = await api.get('/users/profile'); // Assuming profile route exists
-            dispatch({ type: "LOGIN_SUCCESS", payload: res.data });
+            const res = await api.get('/auth/me');
+            dispatch({ type: "LOGIN_SUCCESS", payload: res.data.user });
         } catch (err) {
-            console.error("Failed to refresh user", err);
+            // Not authenticated or error
+            dispatch({ type: "LOGOUT" });
         }
     };
 
-    const logout = () => {
+    useEffect(() => {
+        checkAuth();
+    }, []);
+
+    const logout = async () => {
+        try {
+            await api.post('/auth/logout');
+        } catch (err) {
+            console.error("Logout failed", err);
+        }
         dispatch({ type: "LOGOUT" });
     };
 
@@ -83,7 +84,7 @@ export const AuthContextProvider = ({ children }) => {
                 error: state.error,
                 dispatch,
                 logout,
-                refreshUser,
+                checkAuth, // Expose if needed
             }}
         >
             {children}

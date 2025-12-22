@@ -1,6 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
-import jwt from "jsonwebtoken";
+// import jwt from "jsonwebtoken"; // Removed JWT
 import User from "./models/User.js";
 import cors from "cors";
 import "dotenv/config";
@@ -8,6 +8,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
+import session from "express-session";
+import MongoStore from "connect-mongo";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,19 +27,19 @@ import Booking from "./models/Booking.js";
 import Trip from "./models/Trip.js";
 import Notification from "./models/Notification.js";
 
-
-
-if (!process.env.JWT_SECRET) {
-    console.warn("⚠️  WARNING: JWT_SECRET is not defined in environment variables.");
-    console.warn("⚠️  USING FALLBACK UNSAFE SECRET. PLEASE SET 'JWT_SECRET' IN RENDER DASHBOARD.");
-    process.env.JWT_SECRET = "temporary_dev_secret_key_12345_!@#"; // Fallback to prevent crash
-}
-
 const app = express();
 const httpServer = createServer(app);
+
+// Session Secret Configuration
+if (!process.env.SESSION_SECRET) {
+    console.warn("⚠️  WARNING: SESSION_SECRET is not defined in environment variables.");
+    process.env.SESSION_SECRET = "temporary_dev_session_secret_12345_!@#";
+}
+
 const io = new Server(httpServer, {
     cors: {
-        origin: "*",
+        origin: ["http://localhost:5173", "http://localhost:3000"], // Explicit origins for credentials
+        credentials: true,
         methods: ["GET", "POST"]
     }
 });
@@ -47,7 +49,36 @@ app.set('io', io);
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+
+// CORS Configuration for Sessions
+app.use(cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"], // Match your frontend URL
+    credentials: true
+}));
+
+// Session Middleware
+const sessionMiddleware = session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGO_URI,
+        collectionName: 'sessions',
+        ttl: 14 * 24 * 60 * 60 // 14 days
+    }),
+    cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 14, // 14 days
+        httpOnly: true, // Prevents JS access
+        secure: process.env.NODE_ENV === 'production', // Cookie only sent over HTTPS in production
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // 'lax' is fine for localhost
+    }
+});
+
+app.use(sessionMiddleware);
+
+// Share session with Socket.IO (Basic wrapper)
+const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
+io.use(wrap(sessionMiddleware));
 
 // Routes
 app.use("/api/trips", trips);
@@ -60,22 +91,17 @@ app.use("/api/organiser", organiserRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-// Socket.io Logic
+// Socket.IO Logic - Updated for Session
 io.use(async (socket, next) => {
     try {
-        const token = socket.handshake.auth.token;
-        if (!process.env.JWT_SECRET) {
-            console.error("DEBUG: JWT_SECRET is missing in Socket Middleware.");
-            return next(new Error("Server Configuration Error"));
+        const session = socket.request.session;
+        if (!session || !session.user) {
+            console.log("Socket Auth Failed: No Session");
+            return next(new Error("Authentication error: No session found"));
         }
-        if (!token) {
-            return next(new Error("Authentication error"));
-        }
-
-        const verified = jwt.verify(token, process.env.JWT_SECRET);
 
         // Fetch user to get latest status and username
-        const user = await User.findById(verified.id);
+        const user = await User.findById(session.user.id);
         if (!user || (!user.isVerified && user.role !== 'admin')) {
             return next(new Error("User not verified"));
         }
@@ -83,6 +109,7 @@ io.use(async (socket, next) => {
         socket.user = user;
         next();
     } catch (err) {
+        console.error("Socket Auth Error:", err);
         next(new Error("Authentication error"));
     }
 });

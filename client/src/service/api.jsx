@@ -3,21 +3,10 @@ import axios from "axios";
 const isProd = import.meta.env.PROD;
 const api = axios.create({
     baseURL: isProd ? "/api" : "http://localhost:5000/api",
+    withCredentials: true, // Enable cookies for session
 });
 
-// Add a request interceptor to include the token in headers
-api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem("token");
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
-);
+// Remove JWT request interceptor
 
 // Add a response interceptor to handle 401 Unauthorized errors
 api.interceptors.response.use(
@@ -26,10 +15,10 @@ api.interceptors.response.use(
     },
     (error) => {
         if (error.response && error.response.status === 401) {
-            // Token expired or invalid
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            window.location.href = '/login'; // Redirect to login page
+            // Session expired or invalid
+            // Ideally notify AuthContext, but for now we can just let the error propagate
+            // allowing the component (e.g. AuthContext) to handle it.
+            // window.location.href = '/login'; // Let the app handle navigation state
         }
         return Promise.reject(error);
     }

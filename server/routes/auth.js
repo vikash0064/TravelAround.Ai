@@ -1,7 +1,6 @@
 import express from "express";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
 const router = express.Router();
@@ -13,6 +12,32 @@ router.get("/test-db", async (req, res) => {
         res.status(200).json({ status: "ok", userCount: count, dbState: mongoose.connection.readyState });
     } catch (err) {
         res.status(500).json({ status: "error", error: err.message });
+    }
+});
+
+// CHECK SESSION (Get Current User)
+router.get("/me", async (req, res) => {
+    if (req.session && req.session.user) {
+        // Optional: Re-fetch from DB to get latest status if needed
+        // For performance, we can return session data, but if role/verification can change, fetch fresh.
+        try {
+            const user = await User.findById(req.session.user.id).select("-password");
+            if (!user) {
+                req.session.destroy();
+                return res.status(401).json({ message: "User not found" });
+            }
+            // Update session with latest info
+            req.session.user = {
+                id: user._id,
+                role: user.role,
+                isVerified: user.isVerified
+            };
+            return res.status(200).json({ user: { id: user._id, username: user.username, role: user.role, isVerified: user.isVerified } });
+        } catch (err) {
+            return res.status(500).json({ message: "Server Error" });
+        }
+    } else {
+        return res.status(401).json({ message: "Not authenticated" });
     }
 });
 
@@ -55,6 +80,8 @@ router.post("/register", async (req, res) => {
         console.log("[AUTH_REGISTER] Saving user to DB...");
         const savedUser = await newUser.save();
         console.log("[AUTH_REGISTER] User saved successfully with ID:", savedUser._id);
+
+        // No auto-login because admin approval might be required.
         res.status(201).json({
             message: "User registered successfully. Please wait for admin approval.",
         });
@@ -98,30 +125,39 @@ router.post("/login", async (req, res) => {
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) return res.status(400).json({ message: "Invalid credentials" });
 
-        // Check verification status - RELAXED (Allow login, but restrict features later)
+        // Check verification status
         // if (!user.isVerified && user.role !== "admin") {
         //    return res.status(403).json({ message: "Account pending approval from admin." });
         // }
 
-        // Create token
-        console.log(`[AUTH_LOGIN] DEBUG: JWT_SECRET type: ${typeof process.env.JWT_SECRET}, length: ${process.env.JWT_SECRET?.length}`);
-        if (!process.env.JWT_SECRET) {
-            console.error("[AUTH_LOGIN_ERROR] JWT_SECRET is missing from environment variables.");
-            return res.status(500).json({ message: "Server misconfiguration: Missing JWT_SECRET" });
-        }
+        // Create Session
+        console.log(`[AUTH_LOGIN] Creating session for user: ${user.username}`);
+        req.session.user = {
+            id: user._id,
+            role: user.role,
+            isVerified: user.isVerified
+        };
 
-        const token = jwt.sign(
-            { id: user._id, role: user.role, isVerified: user.isVerified },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
-
-        res.status(200).json({ token, user: { id: user._id, username: user.username, role: user.role, isVerified: user.isVerified } });
+        res.status(200).json({
+            message: "Login successful",
+            user: { id: user._id, username: user.username, role: user.role, isVerified: user.isVerified }
+        });
 
     } catch (err) {
         console.error("[AUTH_LOGIN_ERROR]:", err);
         res.status(500).json({ message: err.message });
     }
+});
+
+// LOGOUT
+router.post("/logout", (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ message: "Could not log out" });
+        }
+        res.clearCookie("connect.sid"); // Clear cookie on client
+        res.status(200).json({ message: "Logout successful" });
+    });
 });
 
 export default router;
