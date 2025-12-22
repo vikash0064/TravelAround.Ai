@@ -279,6 +279,29 @@ export default function ViewTrip() {
           </div>
 
 
+
+          {/* Hotels Section */}
+          <section className="mb-12">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-2 h-10 bg-gradient-to-b from-blue-500 to-indigo-500 rounded-full"></div>
+              <h2 className="text-3xl font-bold text-gray-800">
+                🏨 Recommended Hotels
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {trip?.hotels?.map((hotel, index) => (
+                <TripCard
+                  key={index}
+                  hotel={hotel}
+                  isHotel={true}
+                  tripId={id}
+                  tripHotelName={trip.hotels?.[0]?.hotelName}
+                />
+              ))}
+            </div>
+          </section>
+
           {/* Itinerary Section */}
           <section className="relative">
             <div className="mb-8">

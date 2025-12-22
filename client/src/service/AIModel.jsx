@@ -292,7 +292,7 @@ async function createSmartItinerary(places, days, location, traveler, budget) {
 
   try {
     // UPDATED MODEL NAME
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(prompt);
     const aiItinerary = JSON.parse(result.response.text());
 
