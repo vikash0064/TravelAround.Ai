@@ -28,6 +28,7 @@ import Trip from "./models/Trip.js";
 import Notification from "./models/Notification.js";
 
 const app = express();
+app.set('trust proxy', 1); // Trust Render's load balancer for secure cookies
 const httpServer = createServer(app);
 
 // Session Secret Configuration
