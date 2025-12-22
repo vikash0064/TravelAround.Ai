@@ -49,10 +49,10 @@ async function fetchPlaceImage(query, location, type) {
 async function fetchRealHotels(lat, lng, budget, locationName) {
   console.log("🏨 Fetching hotels...");
   try {
-    const radius = 10000; // 10km radius
+    const radius = 5000; // Reduced to 5km radius for speed
     // More specific Overpass Query for tourism and amenity
     const query = `
-      [out:json][timeout:25];
+      [out:json][timeout:60];
       (
         node["tourism"="hotel"](around:${radius},${lat},${lng});
         node["tourism"="guest_house"](around:${radius},${lat},${lng});
@@ -119,10 +119,10 @@ async function fetchRealHotels(lat, lng, budget, locationName) {
 async function fetchTouristPlaces(lat, lng, locationName) {
   console.log("🗺️ Fetching places...");
   try {
-    const radius = 15000;
+    const radius = 10000; // Reduced to 10km radius
     // Broader, smarter query for attractions
     const query = `
-      [out:json][timeout:30];
+      [out:json][timeout:60];
       (
         node["tourism"~"attraction|museum|gallery|viewpoint|castle|zoo|theme_park"](around:${radius},${lat},${lng});
         node["historic"~"monument|castle|archaeological_site"](around:${radius},${lat},${lng});
@@ -292,7 +292,7 @@ async function createSmartItinerary(places, days, location, traveler, budget) {
 
   try {
     // UPDATED MODEL NAME
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
     const result = await model.generateContent(prompt);
     const aiItinerary = JSON.parse(result.response.text());
 
